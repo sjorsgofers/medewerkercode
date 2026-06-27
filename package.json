@@ -1,0 +1,12 @@
+{
+  "name": "medewerker-codes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Medewerkers zoeken hun persoonlijke code op via postcode + huisnummer",
+  "scripts": {
+    "generate": "node generate.js"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
+}
