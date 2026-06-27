@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Mijn persoonlijke code</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #ffffff;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --text: #0f172a;
+    --muted: #64748b;
+    --ok: #16a34a;
+    --err: #dc2626;
+    --border: #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    color: var(--text);
+  }
+  .card {
+    background: var(--card);
+    width: 100%;
+    max-width: 420px;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.35);
+    padding: 32px 28px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 6px; }
+  p.sub { margin: 0 0 24px; color: var(--muted); font-size: .92rem; line-height: 1.4; }
+  label { display: block; font-size: .85rem; font-weight: 600; margin: 0 0 6px; }
+  input {
+    width: 100%;
+    padding: 13px 14px;
+    font-size: 1rem;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    transition: border-color .15s;
+    text-transform: uppercase;
+  }
+  input::placeholder { text-transform: none; }
+  input:focus { outline: none; border-color: var(--accent); }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: .6; cursor: default; }
+  .result { margin-top: 22px; }
+  .match {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 12px;
+  }
+  .match .naam { font-size: .8rem; color: var(--muted); margin-bottom: 2px; }
+  .match .naam-val { font-size: 1.05rem; font-weight: 600; margin-bottom: 14px; }
+  .match .code-label { font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
+  .code-row { display: flex; align-items: center; gap: 10px; }
+  .code-val {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: var(--ok);
+    font-variant-numeric: tabular-nums;
+  }
+  .copy-btn {
+    width: auto;
+    padding: 8px 12px;
+    font-size: .8rem;
+    background: #f1f5f9;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .copy-btn:hover { background: #e2e8f0; }
+  .error {
+    margin-top: 18px;
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: var(--err);
+    border-radius: 10px;
+    padding: 14px;
+    font-size: .92rem;
+  }
+  .footer { margin-top: 22px; font-size: .78rem; color: var(--muted); text-align: center; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Mijn persoonlijke code</h1>
+    <p class="sub">Je code vergeten? Vul je postcode en huisnummer in en je ziet je naam en persoonlijke code.</p>
+
+    <form id="form">
+      <label for="postcode">Postcode</label>
+      <input id="postcode" name="postcode" placeholder="1234 AB" autocomplete="postal-code" required>
+
+      <label for="huisnummer">Huisnummer</label>
+      <input id="huisnummer" name="huisnummer" placeholder="12" inputmode="numeric" required>
+
+      <button type="submit" id="submit">Toon mijn code</button>
+    </form>
+
+    <div id="result" class="result"></div>
+  </div>
+
+  <script src="data.js"></script>
+  <script>
+    const form = document.getElementById('form');
+    const result = document.getElementById('result');
+    const submitBtn = document.getElementById('submit');
+
+    function normCredential(postcode, huisnummer) {
+      const pc = String(postcode).replace(/\s+/g, '').toUpperCase();
+      const nr = (String(huisnummer).match(/\d+/) || [''])[0];
+      return pc + '|' + nr;
+    }
+
+    function fromB64(s) {
+      return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+    }
+
+    async function deriveKey(credential, salt, iter) {
+      const base = await crypto.subtle.importKey(
+        'raw', new TextEncoder().encode(credential), 'PBKDF2', false, ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' },
+        base,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+
+    function showError(msg) {
+      result.innerHTML = '<div class="error">' + msg + '</div>';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      result.innerHTML = '';
+
+      const data = window.MEDEWERKER_DATA;
+      if (!data || !data.records) {
+        showError('Gegevens konden niet geladen worden. Neem contact op met je leidinggevende.');
+        return;
+      }
+
+      const postcode = document.getElementById('postcode').value.trim();
+      const huisnummer = document.getElementById('huisnummer').value.trim();
+      if (!postcode || !huisnummer) return;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Bezig...';
+
+      try {
+        const credential = normCredential(postcode, huisnummer);
+        const salt = fromB64(data.salt);
+        const key = await deriveKey(credential, salt, data.iter);
+
+        const matches = [];
+        for (const rec of data.records) {
+          try {
+            const iv = fromB64(rec.iv);
+            const ct = fromB64(rec.ct);
+            const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+            const obj = JSON.parse(new TextDecoder().decode(plain));
+            matches.push(obj);
+          } catch (_) { /* verkeerde sleutel voor dit record: overslaan */ }
+        }
+
+        if (matches.length === 0) {
+          showError('Geen medewerker gevonden met deze postcode en huisnummer. Controleer of je het adres invult dat bij ons bekend is, of vraag je leidinggevende.');
+        } else {
+          result.innerHTML = matches.map((m, i) => `
+            <div class="match">
+              <div class="naam">Naam</div>
+              <div class="naam-val">${escapeHtml(m.naam)}</div>
+              <div class="code-label">Persoonlijke code</div>
+              <div class="code-row">
+                <span class="code-val" id="code-${i}">${escapeHtml(m.code)}</span>
+                <button type="button" class="copy-btn" data-code="${escapeHtml(m.code)}">Kopieer</button>
+              </div>
+            </div>
+          `).join('');
+
+          result.querySelectorAll('.copy-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              navigator.clipboard.writeText(btn.dataset.code).then(() => {
+                const t = btn.textContent;
+                btn.textContent = 'Gekopieerd!';
+                setTimeout(() => { btn.textContent = t; }, 1500);
+              });
+            });
+          });
+        }
+      } catch (err) {
+        showError('Er ging iets mis bij het ophalen. Probeer het opnieuw.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Toon mijn code';
+      }
+    });
+  </script>
+</body>
+</html>
